@@ -9,6 +9,7 @@ import com.facebook.react.bridge.WritableMap;
 import com.localz.pinch.models.HttpRequest;
 import com.localz.pinch.models.HttpResponse;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -18,10 +19,13 @@ import java.io.InputStreamReader;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.security.KeyManagementException;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateException;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -85,27 +89,50 @@ public class HttpUtil {
         connection.setRequestMethod(method);
 
         connection = prepareRequestHeaders(connection, request.headers);
+        connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
 
-        connection.setRequestProperty("Accept-Charset", "UTF-8");
         connection.setAllowUserInteraction(false);
         connection.setConnectTimeout(request.timeout);
         connection.setReadTimeout(request.timeout);
 
         if (request.body != null && (method.equals("POST") || method.equals("PUT") || method.equals("DELETE"))) {
             // Set the content length of the body.
-            connection.setRequestProperty("Content-length", request.body.getBytes().length + "");
+
+            JSONObject root = new JSONObject(request.body);
+
+            JSONArray array= root.getJSONArray("_parts");
+            Map<String, String> params = new HashMap<>();
+            for(int i=0;i<array.length();i++)
+            {
+                JSONArray object= array.getJSONArray(i);
+                params.put(object.getString(0), object.getString(1));
+            }
+            StringBuilder postData = new StringBuilder();
+
+            for (Map.Entry<String, String> param : params.entrySet())
+            {
+                if (postData.length() != 0) postData.append('&');
+                postData.append(URLEncoder.encode(param.getKey(), "UTF-8"));
+                postData.append('=');
+                postData.append(URLEncoder.encode(String.valueOf(param.getValue()), "UTF-8"));
+            }
+            byte[] postDataBytes = postData.toString().getBytes("UTF-8");
+
+
+            connection.setRequestProperty("Content-length", postDataBytes.length + "");
             connection.setDoInput(true);
             connection.setDoOutput(true);
             connection.setUseCaches(false);
 
             // Send the JSON as body of the request.
             OutputStream outputStream = connection.getOutputStream();
-            outputStream.write(request.body.getBytes("UTF-8"));
+            outputStream.write(postDataBytes);
             outputStream.close();
         }
 
         return connection;
     }
+
 
     private InputStream prepareResponseStream(HttpsURLConnection connection) throws IOException {
         try {
